@@ -1,0 +1,5 @@
+# Crypt4GH extension
+comment = 'Crypt4GH header reencryption'
+default_version = '1.0'
+module_pathname = '$libdir/pg_crypt4gh'
+relocatable = true
