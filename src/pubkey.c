@@ -2,7 +2,6 @@
 
 #include "common/base64.h"
 
-
 /* ==================================================================
  *
  *  Crypt4GH Public key
@@ -20,7 +19,7 @@
 static int
 c4gh_get_public_key_from_blob(const char* line,
 			      size_t len,
-			      uint8_t pk[crypto_kx_PUBLICKEYBYTES])
+			      uint8_t pubkey[crypto_kx_PUBLICKEYBYTES])
 {
   int rc = 1;
   char* end = (char*)line + len - 1; /* point at the end */
@@ -70,7 +69,7 @@ c4gh_get_public_key_from_blob(const char* line,
     rc = 2;
   } else {
     /* Success: copy over without the NULL-terminating char */
-    memcpy(pk, tmp, crypto_kx_PUBLICKEYBYTES);
+    memcpy(pubkey, tmp, crypto_kx_PUBLICKEYBYTES);
     rc = 0;
   }
 
@@ -92,13 +91,15 @@ c4gh_get_public_key_from_blob(const char* line,
 static int
 ssh_get_public_key_from_blob(const char* line,
 			     size_t len,
-			     uint8_t pk[crypto_kx_PUBLICKEYBYTES])
+			     uint8_t pubkey[crypto_kx_PUBLICKEYBYTES])
 {
 
   int rc = 1;
-  char *end = NULL, *res = NULL;
-  char * content;
-  size_t reslen = 0, clen = 0;
+  char *end = NULL;
+  char *c = NULL;
+  char *content = NULL;
+  uint32_t clen = 0; /* ssh-str len */
+  int dlen = 0; /* base64 decoded len */
 
   /* Check key type and skip it */
   //if(strncmp(line, "ssh-ed25519 ", 12)){ D1("Not an ed25519 ssh key"); rc = 1; goto bailout; }
@@ -107,7 +108,7 @@ ssh_get_public_key_from_blob(const char* line,
   /* skip whitespace */
   while(isspace(*line)){ line++; len--; }
 
-  if(*line == '\0' || len == 0) return 1; /* already at the end? */
+  if(len == 0 || *line == '\0') return 1; /* already at the end? */
 
   /* find the first white-space */
   end = strchr(line, ' ');
@@ -115,64 +116,38 @@ ssh_get_public_key_from_blob(const char* line,
     len = end - line;
 
   /* base64 decode */
-  content = palloc0(len);
-  if (!content){
-    E("ssh blob failed allocation");
-    return 2;
-  }
-  
-  if ((len = pg_b64_decode(line, len, content, len)) < 0){
-    D1("Can't decode the base64 string"); rc = 3; goto bailout;
-  }
- 
+  dlen = pg_b64_dec_len(len);
+  content = palloc0(dlen);
+  if (!content){ E("ssh blob failed allocation"); return 2; }
+
+  c = content;
+
+  dlen = pg_b64_decode(line, len, c, dlen);
+  if (dlen < 0){ D1("Can't decode the base64 string"); rc = 3; goto bailout; }
+
   /* consume key type */
-  if (len < 4){
-    E("ssh blob incomplete");
-    rc = 2;
-    goto bailout;
-  }
-  clen = PEEK_U32(content);
-  if (len > clen - 4) {
-    E("ssh blob too large");
-    rc = 3;
-    goto bailout;
-  }
-  if (len > clen - 4) {
-    E("ssh blob too large");
-    rc = 3;
-    goto bailout;
-  }
-  if(strncmp(content+4, "ssh-ed25519", 12 /* sizeof("ssh-ed25519") - 1 */)){
-    E("Not an ed25519 ssh key");
-    rc = 4;
-    goto bailout;
-  }
+  if (dlen < 4){ D1("invalid ssh key type"); rc = 4; goto bailout; }
+  clen = PEEK_U32(c);
+  c+=4;
+  dlen -= 4;
+
+  if (dlen < clen){ D1("invalid ssh blob"); rc = 5; goto bailout; }
+
+  if(strncmp(c, "ssh-ed25519", clen)){ D1("Not an ed25519 ssh key"); rc = 6; goto bailout; }
+  c += clen;
+  dlen -= clen;
 
   /* consume public key */
-  res = content + 4 + len;
-  clen -= 4 + len;
+  if (dlen < 4){ D1("ssh pk incomplete"); rc = 7; goto bailout; }
+  clen = PEEK_U32(c);
 
-  if (clen < 4){
-    E("ssh pk incomplete");
-    rc = 2;
-    goto bailout;
-  }
-  reslen = PEEK_U32(res);
-  if (reslen > clen - 4) {
-    E("ssh pk too large");
-    rc = 3;
-    goto bailout;
-  }
-  res += 4;
+  if( clen != crypto_kx_PUBLICKEYBYTES ){ D1("incorrect pk size: %u", clen); rc = 8; goto bailout; }
+  c += 4;
+  dlen -= 4;
 
-  if( reslen != crypto_kx_PUBLICKEYBYTES ){
-    D1("public key is of incorrect size: %lu (instead of %d)", reslen, crypto_kx_PUBLICKEYBYTES);
-    rc = 5;
-    goto bailout;
-  }
-
-  /* convert it to x25519 and store it into pk */
-  rc = crypto_sign_ed25519_pk_to_curve25519(pk, (u_char*)res);
+  /* convert it to x25519 and store it into pubkey */
+  rc = crypto_sign_ed25519_pk_to_curve25519(pubkey, (u_char*)c);
+  if (rc){ D1("convertion failed"); rc = 9; goto bailout; }
 
 bailout:
   if(content) pfree(content);
@@ -181,15 +156,15 @@ bailout:
 
 int
 pg_crypt4gh_get_public_key_from_blob(const char* line, size_t len,
-				     uint8_t pk[crypto_kx_PUBLICKEYBYTES])
+				     uint8_t pubkey[crypto_kx_PUBLICKEYBYTES])
 {
   /* Try an ssh key */
   if(!strncmp(line, "ssh-ed25519 ", 12)){
     D3("This is an ssh key");
-    return ssh_get_public_key_from_blob(line + 12, len - 12, pk);
+    return ssh_get_public_key_from_blob(line + 12, len - 12, pubkey);
   }
 
   /* Try a Crypt4GH key */
   D3("Trying Crypt4GH key");
-  return c4gh_get_public_key_from_blob(line, len, pk);
+  return c4gh_get_public_key_from_blob(line, len, pubkey);
 }

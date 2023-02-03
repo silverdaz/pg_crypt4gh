@@ -190,13 +190,13 @@ pg_crypt4gh_parse_pubkey(PG_FUNCTION_ARGS)
     
   SET_VARSIZE(k, VARHDRSZ + crypto_kx_PUBLICKEYBYTES);
 
-  if((rc = pg_crypt4gh_get_public_key_from_blob(VARDATA_ANY(pubkey),
-						(size_t)VARSIZE_ANY_EXHDR(pubkey),
-						(uint8_t*)VARDATA_ANY(k))))
-    {
-      L("Unable to parse the public key: %s", crypt4gh_err(rc));
-      PG_RETURN_NULL();
-    }
+  rc = pg_crypt4gh_get_public_key_from_blob(VARDATA_ANY(pubkey),
+					    (size_t)VARSIZE_ANY_EXHDR(pubkey),
+					    (uint8_t*)VARDATA(k));
+  if(rc){
+    L("Unable to parse the public key: %s", crypt4gh_err(rc));
+    PG_RETURN_NULL();
+  }
   
   PG_RETURN_BYTEA_P(k);
 }
@@ -443,6 +443,7 @@ pg_crypt4gh_header_reencrypt_multiple(PG_FUNCTION_ARGS)
     }
 
     memcpy(recipients + nrecipients * crypto_kx_PUBLICKEYBYTES, VARDATA_ANY(value), crypto_kx_PUBLICKEYBYTES);
+    nrecipients++;
   }
   array_free_iterator(it);
 
