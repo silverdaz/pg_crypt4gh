@@ -1,6 +1,6 @@
 # Crypt4GH Header decryptiong and re-encryption in Postgres
 
-We provide a C module to reencrypt a Crypt4GH header as a Postgres extension
+We provide a Postgres extension to reencrypt a Crypt4GH header
 
 # Building the extension
 
@@ -35,4 +35,4 @@ That file is owned by the postgres user and should not be readable by anyone els
 When reencrypting the packets, we chose to not create a new ephemeral key for each packet reencryption. Instead, we use the master public key itself, when deriving the shared key.
 The master public key is then included as the sender, and users or tools could verify the provenance of the headers (akin to using a signature).
 
-When rotating headers, pass the new master pubkey, update the configuration with the master secret key and reboot the database afterwards.
+When rotating headers, pass the new master pubkey to the re-encrypting function, update the configuration with the master secret key and reboot the database afterwards.
