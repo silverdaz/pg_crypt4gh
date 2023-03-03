@@ -32,6 +32,8 @@ Inside the datase, use:
 The master key is written in hex format in the configuration file from the `config_file` variable.  
 That file is owned by the postgres user and should not be readable by anyone else.
 
+	crypt4gh.master_seckey = 01234456789ABCDEF...
+
 When reencrypting the packets, we chose to not create a new ephemeral key for each packet reencryption. Instead, we use the master public key itself, when deriving the shared key.
 The master public key is then included as the sender, and users or tools could verify the provenance of the headers (akin to using a signature).
 
