@@ -355,11 +355,8 @@ pg_crypt4gh_header_reencrypt(PG_FUNCTION_ARGS)
   size_t hd_out_len = 0;
   bytea* new_hd = NULL;
 
-  if(PG_ARGISNULL(0) ||
-     PG_ARGISNULL(1)){
+  if(PG_ARGISNULL(0) || PG_ARGISNULL(1))
     ereport(ERROR, (errmsg("Null arguments not accepted")));
-    PG_RETURN_NULL();
-  }
 
   if(VARSIZE_ANY_EXHDR(recipient) != crypto_kx_PUBLICKEYBYTES)
     E("Wrong recipient public key size");
@@ -376,7 +373,7 @@ pg_crypt4gh_header_reencrypt(PG_FUNCTION_ARGS)
   D1("Creating output header | size: %zu", hd_out_len);
   new_hd = (bytea*) palloc(VARHDRSZ + hd_out_len);
   SET_VARSIZE(new_hd, VARHDRSZ + hd_out_len);
-  memcpy((void *) VARDATA_ANY(new_hd), hd_out, hd_out_len);
+  memcpy((void *) VARDATA(new_hd), hd_out, hd_out_len);
 
   memset(hd_out, 0, hd_out_len);
 
@@ -404,10 +401,8 @@ pg_crypt4gh_header_reencrypt_multiple(PG_FUNCTION_ARGS)
   Datum value;
   bool isnull;
 
-  if(PG_ARGISNULL(0) || PG_ARGISNULL(1)){
+  if(PG_ARGISNULL(0) || PG_ARGISNULL(1))
     ereport(ERROR, (errmsg("Null arguments not accepted")));
-    PG_RETURN_NULL();
-  }
 
   D3("array dimension: %d", ARR_NDIM(a));
 
@@ -463,7 +458,7 @@ pg_crypt4gh_header_reencrypt_multiple(PG_FUNCTION_ARGS)
   /* success */
   new_hd = (bytea*) palloc(VARHDRSZ + hd_out_len);
   SET_VARSIZE(new_hd, VARHDRSZ + hd_out_len);
-  memcpy((void *) VARDATA_ANY(new_hd), hd_out, hd_out_len);
+  memcpy((void *) VARDATA(new_hd), hd_out, hd_out_len);
 
   /* The function memory context will be freed, but clean it in case it's re-used later on */
   memset(hd_out, 0, hd_out_len);
@@ -591,7 +586,7 @@ pg_crypt4gh_header_session_keys(PG_FUNCTION_ARGS)
     /* Allocate in the function memory context */
     session_key = (bytea*) palloc0(VARHDRSZ + CRYPT4GH_SESSION_KEY_SIZE);
     SET_VARSIZE(session_key, VARHDRSZ + CRYPT4GH_SESSION_KEY_SIZE);
-    memcpy((void *) VARDATA_ANY(session_key), p, CRYPT4GH_SESSION_KEY_SIZE);
+    memcpy((void *) VARDATA(session_key), p, CRYPT4GH_SESSION_KEY_SIZE);
   
     values[0] = (Datum) session_key;
     nulls[0] = false;

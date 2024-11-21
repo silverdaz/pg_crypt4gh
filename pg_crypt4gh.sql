@@ -25,13 +25,13 @@ LANGUAGE C IMMUTABLE STRICT;
 CREATE OR REPLACE FUNCTION header_reencrypt(bytea, bytea)
 RETURNS bytea
 AS 'MODULE_PATHNAME', 'pg_crypt4gh_header_reencrypt'
-LANGUAGE C IMMUTABLE STRICT;
+LANGUAGE C VOLATILE STRICT;
 
 -- Re-encrypt header for given array of pubkeys (as 32-bytes)
 CREATE OR REPLACE FUNCTION header_reencrypt(bytea, bytea[])
 RETURNS bytea
 AS 'MODULE_PATHNAME', 'pg_crypt4gh_header_reencrypt_multiple'
-LANGUAGE C IMMUTABLE STRICT;
+LANGUAGE C VOLATILE STRICT;
 
 -- Decrypts header and output the session keys
 -- OBS: output sensitive material!

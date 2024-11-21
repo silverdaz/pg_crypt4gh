@@ -4,7 +4,7 @@
 
 *.old
 tmp
-pg_amqp--*
+pg_crypt4gh--*
 
 
 # Prerequisites
