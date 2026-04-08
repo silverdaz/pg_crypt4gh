@@ -1,4 +1,4 @@
-# Crypt4GH Header decryptiong and re-encryption in Postgres
+# Crypt4GH Header manipulation in Postgres
 
 We provide a Postgres extension to reencrypt a Crypt4GH header
 
