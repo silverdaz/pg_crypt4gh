@@ -18,9 +18,12 @@
 #include "utils/guc.h"
 #include "funcapi.h"
 
+
+
 PG_MODULE_MAGIC; /* only one time */
 
 #include "includes.h"
+#include "sha2.h"
 
 #define PG_CRYPT4GH_PREFIX   "crypt4gh"
 #define PG_CRYPT4GH_CONFNAME "crypt4gh.master_seckey"
@@ -278,7 +281,7 @@ do_header_reencrypt(const uint8_t* hd_in, size_t hd_in_len,
       D3("Packet length: %zu", packet_in_len);
 
       /* Decrypt the packet, in the function memory context */
-      decrypted_packet = (uint8_t*)palloc0(packet_in_len - 4); /* larged than needed (eg MAC) */
+      decrypted_packet = (uint8_t*)palloc0(packet_in_len - 4); /* larger than needed (eg MAC) */
       if(!decrypted_packet)
 	E("Memory allocation error");
       rc = packet_decrypt(hd_in + 4, packet_in_len - 4, /* skip the length */
@@ -355,8 +358,11 @@ pg_crypt4gh_header_reencrypt(PG_FUNCTION_ARGS)
   size_t hd_out_len = 0;
   bytea* new_hd = NULL;
 
-  if(PG_ARGISNULL(0) || PG_ARGISNULL(1))
+  if(PG_ARGISNULL(0) ||
+     PG_ARGISNULL(1)){
     ereport(ERROR, (errmsg("Null arguments not accepted")));
+    PG_RETURN_NULL();
+  }
 
   if(VARSIZE_ANY_EXHDR(recipient) != crypto_kx_PUBLICKEYBYTES)
     E("Wrong recipient public key size");
@@ -373,7 +379,7 @@ pg_crypt4gh_header_reencrypt(PG_FUNCTION_ARGS)
   D1("Creating output header | size: %zu", hd_out_len);
   new_hd = (bytea*) palloc(VARHDRSZ + hd_out_len);
   SET_VARSIZE(new_hd, VARHDRSZ + hd_out_len);
-  memcpy((void *) VARDATA(new_hd), hd_out, hd_out_len);
+  memcpy((void *) VARDATA_ANY(new_hd), hd_out, hd_out_len);
 
   memset(hd_out, 0, hd_out_len);
 
@@ -401,8 +407,10 @@ pg_crypt4gh_header_reencrypt_multiple(PG_FUNCTION_ARGS)
   Datum value;
   bool isnull;
 
-  if(PG_ARGISNULL(0) || PG_ARGISNULL(1))
+  if(PG_ARGISNULL(0) || PG_ARGISNULL(1)){
     ereport(ERROR, (errmsg("Null arguments not accepted")));
+    PG_RETURN_NULL();
+  }
 
   D3("array dimension: %d", ARR_NDIM(a));
 
@@ -458,7 +466,7 @@ pg_crypt4gh_header_reencrypt_multiple(PG_FUNCTION_ARGS)
   /* success */
   new_hd = (bytea*) palloc(VARHDRSZ + hd_out_len);
   SET_VARSIZE(new_hd, VARHDRSZ + hd_out_len);
-  memcpy((void *) VARDATA(new_hd), hd_out, hd_out_len);
+  memcpy((void *) VARDATA_ANY(new_hd), hd_out, hd_out_len);
 
   /* The function memory context will be freed, but clean it in case it's re-used later on */
   memset(hd_out, 0, hd_out_len);
@@ -467,9 +475,9 @@ pg_crypt4gh_header_reencrypt_multiple(PG_FUNCTION_ARGS)
 }
 
 
-PG_FUNCTION_INFO_V1(pg_crypt4gh_header_session_keys);
+PG_FUNCTION_INFO_V1(pg_crypt4gh_header_session_keys_sha256);
 Datum
-pg_crypt4gh_header_session_keys(PG_FUNCTION_ARGS)
+pg_crypt4gh_header_session_keys_sha256(PG_FUNCTION_ARGS)
 {
   int rc = 1;
   ReturnSetInfo *rsinfo = (ReturnSetInfo *) fcinfo->resultinfo;
@@ -483,10 +491,15 @@ pg_crypt4gh_header_session_keys(PG_FUNCTION_ARGS)
   size_t   decrypted_packet_len = 0;
   uint32_t packet_type;
   uint32_t encryption_method;
-  Datum	   values[1];
-  bool	   nulls[1];
-  bytea*   session_key = NULL;
+  Datum	   values[2];
+  bool	   nulls[2];
 
+  bytea*   session_key_sha256 = NULL;
+  bytea*   pubkey = NULL;
+
+  uint8_t sha256[SHA256_DIGEST_LENGTH];
+  SHA2_CTX ctx;
+  
   if(PG_ARGISNULL(0)){
     E("Null arguments not accepted");
     PG_RETURN_NULL();
@@ -544,7 +557,7 @@ pg_crypt4gh_header_session_keys(PG_FUNCTION_ARGS)
     D3("Packet length: %zu", packet_len);
 
     /* Decrypt the packet in the function memory context */
-    decrypted_packet = (uint8_t*)palloc0(packet_len - 4); /* larged than needed (eg MAC) */
+    decrypted_packet = (uint8_t*)palloc0(packet_len - 4); /* larged than needed (eg pubkey+nonce+MAC) */
     if(!decrypted_packet)
       E("Memory allocation error for decrypted packet");
     p = decrypted_packet;
@@ -552,6 +565,13 @@ pg_crypt4gh_header_session_keys(PG_FUNCTION_ARGS)
 			decrypted_packet, &decrypted_packet_len,
 			pk, sk,
 			1 /* ignore edit list */);
+
+    /* Get pubkey */
+    pubkey = (bytea*) palloc0(VARHDRSZ + crypto_box_PUBLICKEYBYTES);
+    SET_VARSIZE(pubkey, VARHDRSZ + crypto_box_PUBLICKEYBYTES);
+    memcpy((void *) VARDATA_ANY(pubkey), h + 4 + 4, crypto_box_PUBLICKEYBYTES);
+    values[0] = (Datum) pubkey;
+    nulls[0] = false;
 
     /* consume the packet */
     h += packet_len;
@@ -584,19 +604,21 @@ pg_crypt4gh_header_session_keys(PG_FUNCTION_ARGS)
     p += 4;
 
     /* Allocate in the function memory context */
-    session_key = (bytea*) palloc0(VARHDRSZ + CRYPT4GH_SESSION_KEY_SIZE);
-    SET_VARSIZE(session_key, VARHDRSZ + CRYPT4GH_SESSION_KEY_SIZE);
-    memcpy((void *) VARDATA(session_key), p, CRYPT4GH_SESSION_KEY_SIZE);
-  
-    values[0] = (Datum) session_key;
-    nulls[0] = false;
+    memset(sha256, '\0', SHA256_DIGEST_LENGTH);
+    memset(&ctx, '\0', sizeof(ctx));
 
-    D3("Found session key: %2x%2x%2x%2x...%2x%2x%2x%2x", p[0], p[1], p[2], p[3],
-       p[CRYPT4GH_SESSION_KEY_SIZE-4],
-       p[CRYPT4GH_SESSION_KEY_SIZE-3],
-       p[CRYPT4GH_SESSION_KEY_SIZE-2],
-       p[CRYPT4GH_SESSION_KEY_SIZE-1]);
-  
+    SHA256Init(&ctx);
+    SHA256Update(&ctx, p, CRYPT4GH_SESSION_KEY_SIZE);
+    SHA256Final(sha256, &ctx);
+
+    /* Allocate in the function memory context */
+    session_key_sha256 = (bytea*) palloc0(VARHDRSZ + SHA256_DIGEST_LENGTH);
+    SET_VARSIZE(session_key_sha256, VARHDRSZ + SHA256_DIGEST_LENGTH);
+    memcpy((void *) VARDATA_ANY(session_key_sha256), sha256, SHA256_DIGEST_LENGTH);
+
+    values[1] = (Datum) session_key_sha256;
+    nulls[1] = false;
+
     D3("Adding to tuplestore");
     tuplestore_putvalues(rsinfo->setResult, rsinfo->setDesc, values, nulls);
 

@@ -25,19 +25,21 @@ LANGUAGE C IMMUTABLE STRICT;
 CREATE OR REPLACE FUNCTION header_reencrypt(bytea, bytea)
 RETURNS bytea
 AS 'MODULE_PATHNAME', 'pg_crypt4gh_header_reencrypt'
-LANGUAGE C VOLATILE STRICT;
+LANGUAGE C IMMUTABLE STRICT;
 
 -- Re-encrypt header for given array of pubkeys (as 32-bytes)
 CREATE OR REPLACE FUNCTION header_reencrypt(bytea, bytea[])
 RETURNS bytea
 AS 'MODULE_PATHNAME', 'pg_crypt4gh_header_reencrypt_multiple'
-LANGUAGE C VOLATILE STRICT;
+LANGUAGE C IMMUTABLE STRICT;
 
--- Decrypts header and output the session keys
--- OBS: output sensitive material!
-CREATE OR REPLACE FUNCTION header_session_keys(bytea)
-RETURNS SETOF bytea
-AS 'MODULE_PATHNAME', 'pg_crypt4gh_header_session_keys'
+-- Decrypts header and output the sha256 of the session keys
+-- Note: does not output the session keys!
+CREATE OR REPLACE FUNCTION header_session_keys_sha256(IN header bytea,
+       	  	  	   			      OUT pubkey bytea,
+						      OUT sha256 bytea)
+RETURNS SETOF record
+AS 'MODULE_PATHNAME', 'pg_crypt4gh_header_session_keys_sha256'
 LANGUAGE C IMMUTABLE STRICT;
 
 
