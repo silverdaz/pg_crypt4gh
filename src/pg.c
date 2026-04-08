@@ -557,7 +557,7 @@ pg_crypt4gh_header_session_keys_sha256(PG_FUNCTION_ARGS)
     D3("Packet length: %zu", packet_len);
 
     /* Decrypt the packet in the function memory context */
-    decrypted_packet = (uint8_t*)palloc0(packet_len - 4); /* larged than needed (eg pubkey+nonce+MAC) */
+    decrypted_packet = (uint8_t*)palloc0(packet_len - 4); /* larger than needed (eg pubkey+nonce+MAC) */
     if(!decrypted_packet)
       E("Memory allocation error for decrypted packet");
     p = decrypted_packet;
