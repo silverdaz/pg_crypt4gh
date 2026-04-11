@@ -484,7 +484,7 @@ pg_crypt4gh_header_session_keys_sha256(PG_FUNCTION_ARGS)
   bytea*   hd = PG_GETARG_BYTEA_PP(0);
   uint8_t* h = NULL;
   size_t   hlen;
-  int      npackets = 0;
+  int      npackets = 0, count = 0;
   int      packet = 0;
   size_t   packet_len = 0;
   uint8_t* decrypted_packet = NULL;
@@ -501,8 +501,9 @@ pg_crypt4gh_header_session_keys_sha256(PG_FUNCTION_ARGS)
   SHA2_CTX ctx;
   
   if(PG_ARGISNULL(0)){
-    E("Null arguments not accepted");
-    PG_RETURN_NULL();
+    // raise exception 22023: invalid_parameter_value
+    ereport(ERROR,(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+		   errmsg("Null arguments not accepted")));
   }
 
   h = (uint8_t*)VARDATA_ANY(hd);
@@ -557,7 +558,7 @@ pg_crypt4gh_header_session_keys_sha256(PG_FUNCTION_ARGS)
     D3("Packet length: %zu", packet_len);
 
     /* Decrypt the packet in the function memory context */
-    decrypted_packet = (uint8_t*)palloc0(packet_len - 4); /* larger than needed (eg pubkey+nonce+MAC) */
+    decrypted_packet = (uint8_t*)palloc0(packet_len - 4); /* larged than needed (eg pubkey+nonce+MAC) */
     if(!decrypted_packet)
       E("Memory allocation error for decrypted packet");
     p = decrypted_packet;
@@ -621,6 +622,7 @@ pg_crypt4gh_header_session_keys_sha256(PG_FUNCTION_ARGS)
 
     D3("Adding to tuplestore");
     tuplestore_putvalues(rsinfo->setResult, rsinfo->setDesc, values, nulls);
+    count++;
 
     /* fallthrough */
 skip:
@@ -638,11 +640,20 @@ skip:
 
 bailout:
 
-  D3("done rc: %d", rc);
+  D3("done rc: %d | count: %d", rc, count);
 
   if(rc){
-    W("Decrypted Packet Iteration error: %s", crypt4gh_err(rc));
-    PG_RETURN_NULL();
+    // raise exception 22023: invalid_parameter_value
+    ereport(ERROR,(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+		   errmsg("%s", crypt4gh_err(rc))));
   }
+
+  if(count == 0){
+    // raise exception 22023: invalid_parameter_value
+    ereport(ERROR,(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+		   errmsg("No session keys found in Crypt4GH header")));
+  }
+
+  // all good
   return (Datum) 0;
 }
