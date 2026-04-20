@@ -4,6 +4,7 @@
 #include "postgres.h"
 #include "fmgr.h"
 #include "funcapi.h"
+#include "common/checksum_helper.h"
 
 /* logging */
 #define F(fmt, ...)  elog(FATAL,  "============ " fmt, ##__VA_ARGS__)

@@ -498,7 +498,7 @@ pg_crypt4gh_header_session_keys_sha256(PG_FUNCTION_ARGS)
   bytea*   pubkey = NULL;
 
   uint8_t sha256[SHA256_DIGEST_LENGTH];
-  SHA2_CTX ctx;
+  pg_checksum_context ctx;
   
   if(PG_ARGISNULL(0)){
     // raise exception 22023: invalid_parameter_value
@@ -608,9 +608,9 @@ pg_crypt4gh_header_session_keys_sha256(PG_FUNCTION_ARGS)
     memset(sha256, '\0', SHA256_DIGEST_LENGTH);
     memset(&ctx, '\0', sizeof(ctx));
 
-    SHA256Init(&ctx);
-    SHA256Update(&ctx, p, CRYPT4GH_SESSION_KEY_SIZE);
-    SHA256Final(sha256, &ctx);
+    pg_checksum_init(&ctx, CHECKSUM_TYPE_SHA256);
+    pg_checksum_update(&ctx, p, CRYPT4GH_SESSION_KEY_SIZE);
+    pg_checksum_final(&ctx, sha256);
 
     /* Allocate in the function memory context */
     session_key_sha256 = (bytea*) palloc0(VARHDRSZ + SHA256_DIGEST_LENGTH);
